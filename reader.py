@@ -1,5 +1,4 @@
 from utils import xp
-
 class SlidingComplex64Reader: # TODO reader slow unbuffered
     dtype = xp.complex64
     itemsize = 8  # complex64
@@ -39,7 +38,7 @@ class SlidingComplex64Reader: # TODO reader slow unbuffered
             # Note: The .frombuffer method is efficient as it creates a view of the bytes.
             # We then copy it to the appropriate device (CPU or GPU) if necessary.
             data_array = xp.frombuffer(data_bytes, dtype=self.dtype)
-            return data_array
+            return data_array.astype(xp.complex128)
 
         except FileNotFoundError:
             print(f"Error: The file '{self.file_path}' was not found.")
