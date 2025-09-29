@@ -1,10 +1,11 @@
 import plotly.graph_objects as go
-import logging
 import os
 from scipy.optimize import minimize
-
-# utils.py
-import os
+import math
+from math import ceil, floor
+import matplotlib.pyplot as plt
+import pickle
+from tqdm import tqdm
 
 USE_GPU = os.getenv("USE_GPU", "0") == "1"
 
@@ -15,7 +16,7 @@ if USE_GPU:
         on_gpu = True
 
         asnumpy = xp.asnumpy    # CuPy → NumPy
-        asarray = xp.asarray    # Python/NumPy → CuPy
+        asarray = xp.asarray   # Python/NumPy → CuPy
     except ImportError:
         # fallback if cupy not installed
         import numpy as xp
@@ -32,18 +33,10 @@ else:
     asnumpy = lambda a: a
     asarray = xp.asarray
 
-logging.basicConfig( format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s', level=logging.INFO )
-logger = logging.getLogger(__name__)
-file_handler = logging.FileHandler(f'run_250828.log')
-file_handler.setLevel(level=logging.INFO)
-logger.addHandler(file_handler)
-
 # -------- light helpers (backend-agnostic) --------
 def wrap(x):
     return (x + xp.pi) % (2 * xp.pi) - xp.pi
 
-def sqlist(lst):
-    return xp.array([item if isinstance(item, (int, float)) else item.item() for item in lst])
 
 def to_device(x):
     """Move/convert Python or NumPy data to the active backend array (CuPy on GPU, NumPy on CPU)."""
@@ -63,32 +56,22 @@ def to_scalar(x):
         pass
     return x
 
+def sqlist(lst):
+    return xp.array([to_scalar(item) for item in lst])
 
 def myfft(chirp_data, n, plan):
     if USE_GPU:
-        return xfft.fftshift(xfft.fft(chirp_data.astype(xp.complex64), n=n, plan=plan))
+        return xfft.fftshift(xfft.fft(chirp_data.astype(xp.complex128), n=n, plan=plan))
     else:
-        return xfft.fftshift(xfft.fft(chirp_data.astype(xp.complex64), n=n))
+        return xfft.fftshift(xfft.fft(chirp_data.astype(xp.complex128), n=n))
 
 
 def optimize_1dfreq_fast(sig2, tsymbr, freq1, margin):
     def obj1(freq, xdata, ydata):
-        return -xp.abs(ydata.dot(xp.exp(xdata * -1j * 2 * xp.pi * freq.item()))).item()
-    result = minimize(obj1, freq1.item(), args=(tsymbr, sig2), bounds=[(freq1 - margin, freq1 + margin)]) #!!!
+        return to_scalar(-xp.abs(ydata.dot(xp.exp(xdata * -1j * 2 * xp.pi * freq.item()))))
+    result = minimize(obj1, to_scalar(freq1), args=(tsymbr, sig2), bounds=[(freq1 - margin, freq1 + margin)]) #!!!
     return result.x[0], - result.fun / xp.sum(xp.abs(sig2))
 
-def to_scalar_list(lst):
-    """Map list of numbers/0-d arrays to pure Python scalars."""
-    out = []
-    for v in lst:
-        try:
-            if getattr(v, "shape", None) == ():
-                out.append(v.item())
-            else:
-                out.append(v)
-        except Exception:
-            out.append(v)
-    return out
 
 def around(x):
     """Round to nearest integer (works for Python num or 0-d array)."""
@@ -107,7 +90,7 @@ def optimize_1dfreq(sig2, tsymbr, freq, margin):
         freq = xvals[xp.argmax(yvals)]
         valnew = xp.max(yvals)
         if valnew < val * (1 - 1e-7):
-            pltfig1(xvals, yvals, addvline=(freq,), title=f"{i=} {val=} {valnew=}").show()
+            pltfig1(xvals, yvals, addvline=(freq,), title=f"Optimize_1dfreq {i=} {val=} {valnew=}").show()
         assert valnew >= val * (1 - 1e-7), f"{val=} {valnew=} {i=} {val-valnew=}"
         if abs(valnew - val) < 1e-7: margin /= 4
         val = valnew
@@ -146,14 +129,27 @@ def pltfig(datas, title = None, yaxisrange = None, modes = None, marker = None, 
     if fig is None: fig = go.Figure(layout_title_text=title)
     elif title is not None: fig.update_layout(title_text=title)
     if not all(len(data) == 2 for data in datas): datas = [(xp.arange(len(data)), data) for data in datas]
+    # if not(all(len(data) == 2 for data in datas) and all(type(to_device(data[0])) == xp.array and type(to_device(data[1])) == xp.array  for data in datas)):
+    #     print(len(datas[0]))
+    #     print(len(datas[1]))
+    #     print(type(datas[0][0]))
+    #     print(type(datas[0][1]))
+    #     print(type(datas[1][0]))
+    #     print(type(datas[1][1]))
+    #     print(datas[0][0].dtype)
+    #     print(datas[0][1].dtype)
+    #     print(datas[1][0].dtype)
+    #     print(datas[1][1].dtype)
+    assert all(len(data) == 2 for data in datas) 
+    assert all(isinstance(to_device(data[0]), xp.ndarray) and isinstance(to_device(data[1]), xp.ndarray) for data in datas)
     if modes is None:
         modes = ['lines' for _ in datas]
     elif isinstance(modes, str):
         modes = [modes for _ in datas]
     for idx, ((xdata, ydata), mode) in enumerate(zip(datas, modes)):
         if line == None and idx == 1: line = dict(dash='dash')
-        fig.add_trace(go.Scatter(x=to_scalar_list(xdata), y=to_scalar_list(ydata), mode=mode, marker=marker, line=line))
-        assert len(to_scalar_list(xdata)) == len(to_scalar_list(ydata))
+        fig.add_trace(go.Scatter(x=to_host(xdata), y=to_host(ydata), mode=mode, marker=marker, line=line))
+        assert len(to_host(xdata)) == len(to_host(ydata))
     pltfig_hind(addhline, addvline, line_dash, fig, yaxisrange)
     return fig
 
@@ -195,8 +191,8 @@ def pltfig1(xdata, ydata, title = None, yaxisrange = None, mode = None, marker =
     if fig is None: fig = go.Figure(layout_title_text=title)
     elif title is not None: fig.update_layout(title_text=title)
     if mode is None: mode = 'lines'
-    fig.add_trace(go.Scatter(x=to_scalar_list(xdata), y=to_scalar_list(ydata), mode=mode, marker=marker, line=line))
-    assert len(to_scalar_list(xdata)) == len(to_scalar_list(ydata))
+    fig.add_trace(go.Scatter(x=to_host(xdata), y=to_host(ydata), mode=mode, marker=marker, line=line))
+    assert len(to_host(xdata)) == len(to_host(ydata))
     pltfig_hind(addhline, addvline, line_dash, fig, yaxisrange)
     return fig
 

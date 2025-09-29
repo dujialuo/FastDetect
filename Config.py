@@ -1,9 +1,7 @@
-from utils import xp, xfft, USE_GPU, around
-import argparse
-
 # parser = argparse.ArgumentParser()
 # parser.add_argument('--sf', type=int, default=10, help="Set the value of sf")
 # args = parser.parse_args(args=[])
+from utils import xp, xfft, around, USE_GPU
 
 class Config:
     sf = 12
@@ -17,7 +15,7 @@ class Config:
     code_len = 2
 
     sfdpos = preamble_len + code_len
-    sfdend = sfdpos + 2
+    sfdend = sfdpos + 3
     total_len = sfdend + payload_len
 
     cfo_range = bw // 4
@@ -27,8 +25,8 @@ class Config:
     nsampf = (n_classes * fs / bw)
 
     tstandard = xp.linspace(0, nsamp / fs, nsamp + 1)[:-1]
-    decode_matrix_a = xp.zeros((n_classes, nsamp), dtype=xp.complex64)
-    decode_matrix_b = xp.zeros((n_classes, nsamp), dtype=xp.complex64)
+    decode_matrix_a = xp.zeros((n_classes, nsamp), dtype=xp.complex128)
+    decode_matrix_b = xp.zeros((n_classes, nsamp), dtype=xp.complex128)
 
     betai = bw / ((2 ** sf) / bw)
     # wflag = True
@@ -47,8 +45,8 @@ class Config:
     detect_range_pkts = 1000 # !!! TODO
     fft_n = int(fs)
     if USE_GPU:
-        plan = xfft.get_fft_plan(xp.zeros(fft_n, dtype=xp.complex64))
-        plan2 = xfft.get_fft_plan(xp.zeros(nsamp, dtype=xp.complex64))
+        plan = xfft.get_fft_plan(xp.zeros(fft_n, dtype=xp.complex128))
+        plan2 = xfft.get_fft_plan(xp.zeros(nsamp, dtype=xp.complex128))
     else:
         plan = None
         plan2 = None
