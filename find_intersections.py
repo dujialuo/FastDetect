@@ -51,6 +51,7 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
 
     roots = []
     if a == 0 and b == 0:  
+        raise Exception("The two polynomials are identical; infinite intersections.")
         return xp.array([])
     elif a == 0:  
         for n in nrange:
@@ -99,8 +100,10 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
         fig.update_layout(title_text=f'Intersection Points of Two Quadratic Polynomials {pidx=}')
         fig.show()
         
-    if len(intersection_points) == 0: return None
+    if len(intersection_points) == 0:
+        raise Exception("No intersection points found within the specified range.")
+        return None
 
     if selected2 != selected:
-        print(f"find_intersections(): break point not closeset to tstart2 selected {selected - tstart2 =}")
+        print(f"find_intersections(): break point not closeset to tstart2 selected {selected - tstart2 =} {pidx=}")
     return selected
