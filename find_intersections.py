@@ -77,10 +77,10 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
     sig_ref1 = sig * xp.exp(-1j * xp.polyval(coefa, xv / Config.fs))
     sig_ref2 = sig * xp.exp(-1j * xp.polyval(coefb, xv / Config.fs))
     
+
     if len(intersection_points) != 0:
         selected = max(intersection_points, key=lambda x: xp.abs(xp.sum(sig_ref1[:ceil(x * Config.fs - xv[0])])) + xp.abs(xp.sum(sig_ref2[ceil(x * Config.fs - xv[0]):])))
         selected2 = min(intersection_points, key=lambda x: abs(x - tstart2))
-    else: return None
 
     if draw:
         x_vals = xp.linspace(x_min, x_max, 400)
@@ -91,13 +91,16 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
         pltfig1(xv / Config.fs, xp.angle(sig), fig=fig, mode='markers', marker=dict(color='green', symbol='x', size=8))
         fig.add_trace(go.Scatter(x=to_host(intersection_points), y=to_host(wrap(xp.polyval(coefa, intersection_points))), mode='markers', marker=dict(color='red', symbol='circle', size=10)))
         fig.add_trace(go.Scatter(x=to_host(intersection_points), y=to_host(wrap(xp.polyval(coefb, intersection_points))), mode='markers', marker=dict(color='red', symbol='circle', size=10)))
-        fig.add_trace(go.Scatter(x=[to_scalar(selected)], y=[to_scalar(wrap(xp.polyval(coefa, selected)))], mode='markers', marker=dict(color='blue', symbol='cross', size=10)))
+        if len(intersection_points) != 0:
+            fig.add_trace(go.Scatter(x=[to_scalar(selected)], y=[to_scalar(wrap(xp.polyval(coefa, selected)))], mode='markers', marker=dict(color='blue', symbol='cross', size=10)))
         fig.add_vline(x=to_scalar(x_min), line_dash='dash')
         fig.add_vline(x=to_scalar(x_max), line_dash='dash')
         fig.add_vline(x=to_scalar(tstart2), line_dash='dash')
         fig.update_layout(title_text=f'Intersection Points of Two Quadratic Polynomials {pidx=}')
         fig.show()
         
+    if len(intersection_points) == 0: return None
+
     if selected2 != selected:
         print(f"find_intersections(): break point not closeset to tstart2 selected {selected - tstart2 =}")
     return selected
