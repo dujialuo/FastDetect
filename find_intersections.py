@@ -38,7 +38,7 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
 
     # Determine the range of y-values for the difference polynomial within [x_min, x_max]
     y_values = [y_min_bound, y_max_bound]
-    if x_min <= x_vertex <= x_max and a != 0:
+    if x_vertex is not None and x_min <= x_vertex <= x_max:
         y_values.append(y_vertex)
 
     y_lower = min(y_values)
@@ -92,9 +92,9 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
         fig.add_trace(go.Scatter(x=to_host(intersection_points), y=to_host(wrap(xp.polyval(coefa, intersection_points))), mode='markers', marker=dict(color='red', symbol='circle', size=10)))
         fig.add_trace(go.Scatter(x=to_host(intersection_points), y=to_host(wrap(xp.polyval(coefb, intersection_points))), mode='markers', marker=dict(color='red', symbol='circle', size=10)))
         fig.add_trace(go.Scatter(x=[to_scalar(selected)], y=[to_scalar(wrap(xp.polyval(coefa, selected)))], mode='markers', marker=dict(color='blue', symbol='cross', size=10)))
-        fig.add_hline(y=to_scalar(x_min), line_dash='dash')
-        fig.add_hline(y=to_scalar(x_max), line_dash='dash')
-        fig.add_hline(y=to_scalar(tstart2), line_dash='dash')
+        fig.add_vline(x=to_scalar(x_min), line_dash='dash')
+        fig.add_vline(x=to_scalar(x_max), line_dash='dash')
+        fig.add_vline(x=to_scalar(tstart2), line_dash='dash')
         fig.update_layout(title_text=f'Intersection Points of Two Quadratic Polynomials {pidx=}')
         fig.show()
         
