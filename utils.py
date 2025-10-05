@@ -67,8 +67,9 @@ def myfft(chirp_data, n, plan):
 
 
 def optimize_1dfreq_fast(sig2, fs, freq1, margin):
+    # minimize converts values to numpy arrays for freq, print(type(freq), type(fs), type(ydata)) returns <class 'numpy.ndarray'> <class 'float'> <class 'cupy.ndarray'>
     def obj1(freq, fs, ydata):
-        return to_scalar(-xp.abs(ydata.dot(xp.exp(xp.arange(ydata.shape[0]) / to_device(fs) * -1j * 2 * xp.pi * to_device(freq)))))
+        return to_scalar(-xp.abs(ydata.dot(xp.exp(xp.arange(ydata.shape[0]) / fs * -1j * 2 * xp.pi * to_device(freq)))))
     result = minimize(obj1, to_scalar(freq1), args=(fs, sig2), bounds=[(freq1 - margin, freq1 + margin)]) #!!!
     return result.x[0], - result.fun / xp.sum(xp.abs(sig2))
 
