@@ -1,9 +1,11 @@
 from utils import xp
+import os
+from Config import Config
 class SlidingComplex64Reader: # TODO reader slow unbuffered
     dtype = xp.complex64
     itemsize = 8  # complex64
 
-    def __init__(self, file_path):
+    def __init__(self, file_path: str, tstart: int):
         """
         Initializes the reader for a complex64 binary file.
 
@@ -11,8 +13,13 @@ class SlidingComplex64Reader: # TODO reader slow unbuffered
             file_path (str): The path to the binary file.
         """
         self.file_path = file_path
+        self.tstart = tstart  # start time in samples (int)
+        file_size = os.path.getsize(file_path)
+        complex64_size = xp.dtype(xp.complex64).itemsize
+        assert complex64_size == 8
+        print(f"{file_path=} Size in Number of symbols: {file_size // complex64_size // Config.nsamp}")
 
-    def get(self, start, length):
+    def get(self, start: int, end: int):
         """
         Reads a chunk of data from the file.
 
@@ -23,8 +30,9 @@ class SlidingComplex64Reader: # TODO reader slow unbuffered
         Returns:
             xp.ndarray: An array containing the requested data.
         """
-        byte_start = start * self.itemsize
-        byte_length = length * self.itemsize
+        assert end > start
+        byte_start = (start + self.tstart) * self.itemsize
+        byte_length = (end - start) * self.itemsize
 
         try:
             with open(self.file_path, 'rb') as f:

@@ -8,7 +8,7 @@ from symbtime import symbtime
 
 
 # compute all coef2d for each preamble symbol, for symbtime use. 
-def fitcoef2(coeff: xp.array, coeft: xp.array, reader: SlidingComplex64Reader):
+def fitcoef2(coeff: xp.array, coeftn: xp.array, reader: SlidingComplex64Reader):
     betai = Config.bw / ((2 ** Config.sf) / Config.bw) * xp.pi # frequency slope to phase 2d slope, *pi
     coeflist = []
 
@@ -20,8 +20,8 @@ def fitcoef2(coeff: xp.array, coeft: xp.array, reader: SlidingComplex64Reader):
         estf = xp.polyval(coeff, pidx)
         estbw = Config.bw * (1 + estf / Config.sig_freq)
         beta1 = betai * (1 + 2 * estf / Config.sig_freq)
-        tstart = xp.polyval(coeft, pidx)
-        tend = xp.polyval(coeft, pidx + 1)
+        tstart = xp.polyval(coeftn, pidx)
+        tend = xp.polyval(coeftn, pidx + 1)
         beta2 = 2 * xp.pi * (- estbw * 0.5 + estf) - tstart * 2 * beta1
         coef2d_est2 = xp.array([to_scalar(beta1), to_scalar(beta2), 0])
 
@@ -50,14 +50,14 @@ def fitcoef2(coeff: xp.array, coeft: xp.array, reader: SlidingComplex64Reader):
     return xp.array(coeflist)
 
 
-def fitcoef4(coeff: xp.array, coeft: xp.array, reader: SlidingComplex64Reader):
+def fitcoef4(coeff: xp.array, coeftn: xp.array, reader: SlidingComplex64Reader):
     betai = Config.bw / ((2 ** Config.sf) / Config.bw) * xp.pi # frequency slope to phase 2d slope, *pi
-    coeflist = fitcoef2(coeff, coeft, reader)
+    coeflist = fitcoef2(coeff, coeftn, reader)
     
     # plot phase difference between consecutive symbols
     phasedifflist = xp.zeros((Config.preamble_len - 1,), dtype=xp.float32)
     for pidx in range(Config.preamble_len - 1):
-        tjump = xp.polyval(coeft, pidx + 1)
+        tjump = xp.polyval(coeftn, pidx + 1)
         phasediff = wrap(xp.polyval(coeflist[pidx + 1], tjump) - xp.polyval(coeflist[pidx], tjump))
         phasedifflist[pidx] = phasediff
     phasedifflist_unwrap = xp.unwrap(xp.array(phasedifflist))
@@ -70,9 +70,9 @@ def fitcoef4(coeff: xp.array, coeft: xp.array, reader: SlidingComplex64Reader):
         tdifflist[pidx] = phasedifflist_unwrap[pidx] / 2 / xp.pi / estbw # phasediff is caused by mismatched symbol change time, -> bw mismatch. phase = 2pi * bw * dt
     xrange = xp.arange(50, len(tdifflist)) # !!! ignore first 50 points
     tdiff_coef = xp.polyfit(xrange, tdifflist[xrange], 1)
-    coeft_new = coeft.copy()
+    coeft_new = coeftn.copy()
     coeft_new[-2:] += tdiff_coef
-    logger.warning(f"{tdiff_coef=} {coeft=} {coeft_new=} cfo ppm from time: {1 - coeft_new[0] / Config.nsampf * Config.fs} cfo: {(1 - coeft_new[0] / Config.nsampf * Config.fs) * Config.sig_freq} unwrapped phasediff so t may shift by margin {1/Config.bw}")
+    logger.warning(f"{tdiff_coef=} {coeftn=} {coeft_new=} cfo ppm from time: {1 - coeft_new[0] / Config.nsampf * Config.fs} cfo: {(1 - coeft_new[0] / Config.nsampf * Config.fs) * Config.sig_freq} unwrapped phasediff so t may shift by margin {1/Config.bw}")
 
     return coeft_new
 
@@ -113,10 +113,10 @@ def work_new(fstart, tstart, file_path):
     
     tsymblen = 2 ** Config.sf / Config.bw * (1 - fstart / Config.sig_freq)
     coeff = xp.array((0, fstart))
-    coeft = xp.array((tsymblen, tstart / Config.fs))
-    coeft = fitcoef4(coeff, coeft, reader)
-    # coeft = fitcoef4(coeff, coeft, reader) # do this to check correctness of fitcoef4
+    coeftn = xp.array((tsymblen, tstart / Config.fs))
+    coeftn = fitcoef4(coeff, coeftn, reader)
+    # coeftn = fitcoef4(coeff, coeftn, reader) # do this to check correctness of fitcoef4
 
-    coeflist = fitcoef2(coeff, coeft, reader)
-    coeff, coeft = symbtime(coeff, coeft, reader, coeflist, nextstep=1)
-    print(coeff, coeft)
+    coeflist = fitcoef2(coeff, coeftn, reader)
+    coeff, coeftn = symbtime(coeff, coeftn, reader, coeflist, nextstep=1)
+    print(coeff, coeftn)

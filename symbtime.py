@@ -8,11 +8,11 @@ from scipy.optimize import minimize
 from find_intersections import find_intersections
 from decode_core import decode_core
 
-def symbtime(coeff, coeft, reader, coeflist, margin=1000, nextstep=0):
+def symbtime(coeff, coeftn, reader, coeflist, margin=1000, nextstep=0):
 
     # see if the time estimations are correct
     # for pidx in xp.arange(10, Config.preamble_len, 20):
-    #     tstart2 = xp.polyval(coeft, pidx)
+    #     tstart2 = xp.polyval(coeftn, pidx)
     #     margin1 = 20
     #     nsymbr = xp.arange(around(tstart2 * Config.fs - margin1), around(tstart2 * Config.fs + margin1)).astype(xp.int64)
     #     tsymbr = nsymbr / Config.fs
@@ -26,7 +26,7 @@ def symbtime(coeff, coeft, reader, coeflist, margin=1000, nextstep=0):
     dy = []
     if False:
         for pidx in xp.arange(10, Config.preamble_len):
-            tstart2 = xp.polyval(coeft, pidx)
+            tstart2 = xp.polyval(coeftn, pidx)
             selected = find_intersections(coeflist[pidx - 1], coeflist[pidx], tstart2, reader, 1e-5, margin=margin, draw=False, remove_range=False) #!!! TODO remove range
             if selected != None:
                 dx.append(pidx)
@@ -40,7 +40,7 @@ def symbtime(coeff, coeft, reader, coeflist, margin=1000, nextstep=0):
         dx, dy = pickle.load(f)
     coeff_time = xp.polyfit(dx, dy, 1)
 
-    logger.warning(f"guessed: {coeft=} coeff_time={coeff_time[0]:.12f},{coeff_time[1]:.12f} cfo ppm from time: {1 - coeff_time[0] / Config.nsampf * Config.fs} cfo: {(1 - coeff_time[0] / Config.nsampf * Config.fs) * Config.sig_freq}")
+    logger.warning(f"guessed: {coeftn=} coeff_time={coeff_time[0]:.12f},{coeff_time[1]:.12f} cfo ppm from time: {1 - coeff_time[0] / Config.nsampf * Config.fs} cfo: {(1 - coeff_time[0] / Config.nsampf * Config.fs) * Config.sig_freq}")
     pltfig(((dx, dy), (dx, xp.polyval(coeff_time, dx))), title="intersect points fitline").show()
     pltfig1(dx, dy - xp.polyval(coeff_time, dx), title="intersect points diff").show()
 
@@ -100,7 +100,7 @@ def symbtime(coeff, coeft, reader, coeflist, margin=1000, nextstep=0):
 
     coeff_new, coeff_new1 = estcoefs
 
-    coeff_time = coeft # todo!!!2
+    coeff_time = coeftn # todo!!!2
     # coeff_time[-1] += 0.4e-6 + 130e-9
 
     logger.warning(f"{xp.polyval(coeff_time, Config.preamble_len)=} {xp.polyval(coeff_time3, Config.preamble_len)=}")

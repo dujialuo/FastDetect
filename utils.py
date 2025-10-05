@@ -50,7 +50,7 @@ def to_scalar(x):
     """Return a Python scalar if x is 0-d array/array-like; otherwise return x unchanged."""
     # Works for both NumPy and CuPy
     try:
-        if getattr(x, "shape", None) == ():
+        if getattr(x, "shape", None) == () or getattr(x, "shape", None) == (1,):
             return x.item()
     except Exception:
         pass
@@ -66,10 +66,10 @@ def myfft(chirp_data, n, plan):
         return xfft.fftshift(xfft.fft(chirp_data.astype(xp.complex128), n=n))
 
 
-def optimize_1dfreq_fast(sig2, tsymbr, freq1, margin):
-    def obj1(freq, xdata, ydata):
-        return to_scalar(-xp.abs(ydata.dot(xp.exp(xdata * -1j * 2 * xp.pi * freq.item()))))
-    result = minimize(obj1, to_scalar(freq1), args=(tsymbr, sig2), bounds=[(freq1 - margin, freq1 + margin)]) #!!!
+def optimize_1dfreq_fast(sig2, fs, freq1, margin):
+    def obj1(freq, fs, ydata):
+        return to_scalar(-xp.abs(ydata.dot(xp.exp(xp.arange(ydata.shape[0]) / to_device(fs) * -1j * 2 * xp.pi * to_device(freq)))))
+    result = minimize(obj1, to_scalar(freq1), args=(fs, sig2), bounds=[(freq1 - margin, freq1 + margin)]) #!!!
     return result.x[0], - result.fun / xp.sum(xp.abs(sig2))
 
 

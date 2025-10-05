@@ -20,7 +20,7 @@ class Config:
 
     cfo_range = bw // 4
     n_classes = 2 ** sf
-    tsig = 2 ** sf / bw * fs  # in samples
+    tsign = 2 ** sf / bw * fs  # in samples
     nsamp = around(n_classes * fs / bw)
     nsampf = (n_classes * fs / bw)
 
@@ -28,7 +28,7 @@ class Config:
     decode_matrix_a = xp.zeros((n_classes, nsamp), dtype=xp.complex128)
     decode_matrix_b = xp.zeros((n_classes, nsamp), dtype=xp.complex128)
 
-    betai = bw / ((2 ** sf) / bw)
+    betan = bw / ((2 ** sf) / bw) * fs
     # wflag = True
     # for code in range(n_classes):
     #     if (code-1)%4!=0 and sf>=11 and wflag:

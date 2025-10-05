@@ -5,26 +5,19 @@ from reader import SlidingComplex64Reader
 from find_intersections import find_intersections
 from fitcoef import fitcoef2
 
-
 file_path = "data/test_1226"
+reader = SlidingComplex64Reader(file_path, 4240091)
 
-file_size = os.path.getsize(file_path)
-complex64_size = xp.dtype(xp.complex64).itemsize
-assert complex64_size == 8
-print(f"{file_path=} Size in Number of symbols: {file_size // complex64_size // Config.nsamp}")
+coeff = xp.array((-0.512392321665, -41023.388364708379), dtype=xp.float64)
+coeftn = xp.array((0.101716420, 10082.6333 - Config.tsign, 0.37), dtype=xp.float64) 
 
-reader = SlidingComplex64Reader(file_path)
-
-coeff = xp.array((-0.512392321665, -41023.388364708379))
-coeft = xp.array((1.01716420e-13, 1.00826333e-02, 4.24009137e+00))
-
-coeflist = fitcoef2(coeff, coeft, reader)
+coeflist = fitcoef2(coeff, coeftn, reader)
 
 sec_xlist = []
 sec_tlist = []
 if True:
     for pidx in xp.arange(Config.preamble_len):
-        tstart2 = xp.polyval(coeft, pidx)
+        tstart2 = xp.polyval(coeftn, pidx)
         if pidx > 0:
             selected = find_intersections(coeflist[pidx - 1], coeflist[pidx], tstart2, reader, 1e-5, pidx, draw=(pidx % 50 == 0 or pidx==225)) #!!! TODO remove range
         else:
@@ -47,7 +40,7 @@ with open(f"intersections0.pkl","rb") as f:
     sec_xlist, sec_tlist = pickle.load(f)
 
 coeff_time = xp.polyfit(sec_xlist, sec_tlist, 1)
-print(f"guessed: {coeft=} coeff_time={coeff_time[0]:.12f},{coeff_time[1]:.12f} cfo ppm from time: {1 - coeff_time[0] / Config.nsampf * Config.fs} cfo: {(1 - coeff_time[0] / Config.nsampf * Config.fs) * Config.sig_freq}")
+print(f"guessed: {coeftn=} coeff_time={coeff_time[0]:.12f},{coeff_time[1]:.12f} cfo ppm from time: {1 - coeff_time[0] / Config.nsampf * Config.fs} cfo: {(1 - coeff_time[0] / Config.nsampf * Config.fs) * Config.sig_freq}")
 pltfig(((sec_xlist, sec_tlist), (sec_xlist, xp.polyval(coeff_time, sec_xlist))), title="intersect points fitline").show()
 pltfig1(sec_xlist, sec_tlist - xp.polyval(coeff_time, sec_xlist), title="intersect points diff").show()
 
@@ -130,17 +123,64 @@ for pidx in range(Config.preamble_len):
     estt_diff[pidx] = estt_from_f - (xp.polyval(coeff_time_final, pidx) - xp.polyval(coeff_time_final, pidx - 1))
 pltfig1(pidx_range, estt_diff[pidx_range], title="estimated time difference from freq").show()
 print(f"{coeff_time_final=} {coeff_time3=} {coeff_time_final - coeff_time3=}")
-print(f"{coeff_time_final=} {coeft=} {coeff_time_final - coeft=}")
+print(f"{coeff_time_final=} {coeftn=} {coeff_time_final - coeftn=}")
 
 
+
+for ixx in range(2):
+    print(f"start computing {'start' if ixx == 0 else 'end'} frequencies from coeflist and tjump")
+    dd = []
+    for pidx in range(240):
+        estf = xp.polyval(coeff, pidx)
+        if ixx == 0:
+            bwdiff = -Config.bw * (1 + estf / Config.sig_freq) / 2
+        else:
+            bwdiff = Config.bw * (1 + estf / Config.sig_freq) / 2
+        dd.append(to_scalar((coeflist[pidx, 0] * 2 * xp.polyval(coeff_time_final, pidx + ixx) + coeflist[pidx, 1]) / 2 / xp.pi - bwdiff))
+    dd = xp.array(dd)
+    pidx_range2 = xp.arange(50, Config.preamble_len - 10)
+    estcoef = xp.polyfit(pidx_range2, dd[pidx_range2], 1)
+    intercept = xp.mean(dd[pidx_range2] - freq_rate * pidx_range2)
+    estcoefs.append(estcoef)
+
+    pltfig(((pidx_range2, dd[pidx_range2]), (pidx_range2, xp.polyval(estcoef, pidx_range2))),
+           title=f"intersect points fitline freq{ixx} {estcoef=}").show()
+    pltfig1(pidx_range2, dd[pidx_range2] - xp.polyval(estcoef, pidx_range2), title=f"intersect points diff freq{ixx}").show()
+    
+    fdiff = intercept - estcoef[1] # freq = (2at + b) / 2pi deltaf = a/pi deltat
+    tdiff =  fdiff / xp.mean(coeflist[:, 0]) * xp.pi
+    print(f"new computation: estcoef at t=0: {estcoef[1]:.12f} estf change rate per symb: {estcoef[0]:.12f} old estimation from tdiff: {freq_rate:.12f} {intercept:.12f} {tdiff:.12f}")
+
+    # f(x) = a x + b
+    # f(x + 0.5) = a x + 0.5a + b
+    # t(x) = T ( x - f(0)/F - f(1)/F - ... - f(n)/F)
+    # t(x) = T ( x - x(f(0)+f(x)/2)/F)
+    # t(x) = T ( x - x(ax+b+b)/2/F)
+    # t(x) = T (ax^2/2F + x (b/F + 1))
+    tsign = 2 ** Config.sf / Config.bw
+    assert len(estcoef) == 2
+    estcoeft = xp.hstack([estcoef[0] / 2 / Config.sig_freq * tsign, ((estcoef[0] + estcoef[1]) / Config.sig_freq + 1) * tsign, coeftn[-1]])
+    print(f"t from f {estcoeft=}, {coeff_time_final=}")
+    # pltfig1(pidx_range2, xp.polyval(estcoeft, pidx_range2) - xp.polyval(coeff_time_final, pidx_range2), title="time difference of new and old estimation").show()
+
+    # compute tdiff
+    # t(x) = ax^2 + bx + c
+    # t(x+1)-t(x) = a(2x+1) + b = 2ax + (a + b)
+    assert len(coeff_time_final) == 3
+    coeff_tlen = xp.hstack((coeff_time_final[0] * 2, coeff_time_final[0] + coeff_time_final[1]))
+    # f from t: t = T * (1 - f / F)
+    # f = F * (1 - t / T) 
+    # f = F * (1 - (a x + b) / T) = - a x F / T + F * (1 - b / T)
+#    coeff_from_tlen = xp.hstack((-  Config.sig_freq / tsign * coeff_tlen[0], Config.sig_freq * (1 - coeff_tlen[1] / tsign)))
+    # -2aF/T, F(1- (a+b)/T)
+    coeff_from_tlen = xp.hstack([- coeff_time_final[0] * 2 * Config.sig_freq / tsign, Config.sig_freq * (1 - xp.sum(coeff_time_final[:2]) / tsign)])
+
+    print(f"{coeff_tlen=} {coeff_from_tlen=} {estcoef=}") 
+    
+    
 
 coeff_time = coeff_time_final # todo!!!2
 time_delta = 1 / Config.bw
-# coeff_time[-1] += 0.4e-6 + 130e-9
-
-# print(f"{xp.polyval(coeft, Config.preamble_len)=} {xp.polyval(coeff_time3, Config.preamble_len)=}")
-# coeff_time = coeff_time3 # !!! todo !!!
-# print(f"{coeff_time=} already replaced by coefftime3")
 
 betai = Config.bw / ((2 ** Config.sf) / Config.bw) * xp.pi
 coeffitlist = xp.zeros((Config.preamble_len, 3), dtype=xp.float64)
@@ -446,3 +486,5 @@ line_coef = xp.polyfit(xp.arange(Config.preamble_len // 2, Config.total_len), co
 pltfig(((xp.arange(Config.total_len), coefdiff), (xp.arange(Config.total_len), xp.polyval(line_coef, xp.arange(Config.total_len)))), title="coefdiff").show()
 # for pidx in range(Config.preamble_len, Config.total_len):
 #     coefdiff[pidx] = xp.polyval(line_coef, pidx)
+
+# %%

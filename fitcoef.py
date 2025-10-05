@@ -1,53 +1,53 @@
 from Config import Config
 from reader import SlidingComplex64Reader
-from utils import xp, to_scalar, myfft, optimize_1dfreq_fast, wrap, pltfig
+from utils import xp, to_scalar, myfft, optimize_1dfreq_fast, wrap, pltfig, pltfig1
 from math import ceil
-def fitcoef2(coeff: xp.array, coeft: xp.array, reader: SlidingComplex64Reader):
-    betai = Config.bw / ((2 ** Config.sf) / Config.bw) * xp.pi # frequency slope to phase 2d slope, *pi
-    coeflist = []
+
+def fitcoef2(coeff: xp.array, coeftn: xp.array, reader: SlidingComplex64Reader):
+    coeflistn = xp.zeros((Config.preamble_len, 3), dtype=xp.float64)
 
     for pidx in range(0, Config.preamble_len):
-        
-        # compute coef2d_est2: polynomial curve fitting unwrapped phase of symbol pidx
-        # time: tstart to tend
-        # frequency at tstart: - estbw * 0.5 + estf
-        estf = xp.polyval(coeff, pidx)
-        estbw = Config.bw * (1 + estf / Config.sig_freq)
-        beta1 = betai * (1 + 2 * estf / Config.sig_freq)
-        tstart = xp.polyval(coeft, pidx)
-        tend = xp.polyval(coeft, pidx + 1)
-        beta2 = 2 * xp.pi * (- estbw * 0.5 + estf) - tstart * 2 * beta1
-        coef2d_est2 = xp.array([to_scalar(beta1), to_scalar(beta2), 0])
+        cfo_start = xp.polyval(coeff, pidx)
+        bw_start = Config.bw * (1 + cfo_start / Config.sig_freq)
+        freq_rate = Config.bw / ((2 ** Config.sf) / Config.bw) * xp.pi * (1 + 2 * cfo_start / Config.sig_freq)
+        # ax^2 + bx + c frequency: (2ax + b)/2pi frequency change rate: a/pi
+        coeflistn[pidx, 0] = freq_rate / Config.fs / Config.fs * xp.pi
 
-        # align 3rd parameter of coef2d_est2 to observed phase at tstart
-        nsymbr_start = ceil(tstart * Config.fs + Config.nsamp / 8)
-        nsymbr_end = ceil(tend * Config.fs - Config.nsamp / 8)
-        nsymbr = xp.arange(ceil(tstart * Config.fs + Config.nsamp / 8), ceil(tend * Config.fs - Config.nsamp / 8))
-        tsymbr = nsymbr / Config.fs
+        tstartn = xp.polyval(coeftn, pidx) # real start time = tstartn + Config.tsign * pidx + reader.tstart
+        tendn = xp.polyval(coeftn, pidx + 1) # real end time = tendn + Config.tsign * pidx + reader.tstart
+        freq_start = - bw_start * 0.5 + cfo_start
+        # (2ax + b)/2pi = freq_start at x = tstartn, b = 2pi(freq_start - 2a tstartn)
+        coeflistn[pidx, 1] = 2 * xp.pi * freq_start / Config.fs - 2 * freq_rate * tstartn
 
-        sig0 = reader.get(nsymbr_start, nsymbr_end - nsymbr_start)
-        sig1 = sig0 * xp.exp(-1j * xp.polyval(coef2d_est2, tsymbr))
+        # align 3rd parameter of coef2d to observed phase at tstartn
+        nsymbr_start = ceil(tstartn + Config.nsamp / 8 + Config.tsign * pidx)
+        nsymbr_end = ceil(tendn - Config.nsamp / 8 + Config.tsign * (pidx + 1))
+        nsymbr = xp.arange(nsymbr_start, nsymbr_end)
+
+        sig0 = reader.get(nsymbr_start, nsymbr_end)
+        sig1 = sig0 * xp.exp(-1j * xp.polyval(coeflistn[pidx], nsymbr - Config.tsign * pidx))
         data0 = myfft(sig1, n=Config.fft_n, plan=Config.plan)
         freq1 = xp.fft.fftshift(xp.fft.fftfreq(Config.fft_n, d=1 / Config.fs))[xp.argmax(xp.abs(data0))]
-        freq, valnew = optimize_1dfreq_fast(sig1, tsymbr, freq1, Config.fs / Config.fft_n * 5)
-        # freqf, valnew = optimize_1dfreq(sig1, tsymbr, freq1, Config.fs / Config.fft_n * 5)
-        # print(f"Initial freq offset: {freq1}, after FFT fit: {freq}, after precise fit: {freqf}, diff: {freqf - freq}")
+        freq, valnew = optimize_1dfreq_fast(sig1, Config.fs, freq1, Config.fs / Config.fft_n * 5)
+        coeflistn[pidx, 1] = 2 * xp.pi * (freq_start + freq) / Config.fs - 2 * freq_rate * tstartn
+        sig2 = sig0.dot(xp.exp(-1j * xp.polyval(coeflistn[pidx], nsymbr - Config.tsign * pidx)))
+        coeflistn[pidx, 2] += xp.angle(sig2)
+        print(f"Preamble Symbol {pidx}: C0={coeflistn[pidx,0]:.3e}, C1={coeflistn[pidx,1]:.3e}, C2={coeflistn[pidx,2]:.3e}")
 
-        # adjust coef2d_est2[1] according to freq difference
-        coef2d_est2[1] = 2 * xp.pi * (- estbw * 0.5 + estf + freq) - tstart * 2 * beta1
-        sig2 = sig0 * xp.exp(-1j * xp.polyval(coef2d_est2, tsymbr))
-        # freq, valnew = optimize_1dfreq(sig2, tsymbr, freq1, Config.fs / Config.fft_n * 5)
-        # print(f"{freq=} should be zero {valnew=}")
-        coef2d_est2[2] += xp.angle(sig0.dot(xp.exp(-1j * xp.polyval(coef2d_est2, tsymbr))))
-        # print(f"{xp.angle(sig0.dot(xp.exp(-1j * xp.polyval(coef2d_est2, tsymbr))))} should be zero")
-        coeflist.append(coef2d_est2)
-
-        if False:#pidx < 2:
-            pltfig1(tsymbr, wrap(xp.angle(sig0) - xp.polyval(coef2d_est2, tsymbr)),
+        if pidx < 2:
+            nsymbr_start = ceil(tstartn + Config.tsign * pidx)
+            nsymbr_end = ceil(tendn + Config.tsign * (pidx + 1))
+            sig0 = reader.get(nsymbr_start, nsymbr_end)
+            nsymbr = xp.arange(nsymbr_start, nsymbr_end)
+            pltfig1(nsymbr, wrap(xp.angle(sig0) - xp.polyval(coeflistn[pidx], nsymbr - Config.tsign * pidx)),
                     title=f"Fitted Phase Curve for Preamble Symbol {pidx}",
                     mode='lines').show()
-            pltfig(((tsymbr, xp.unwrap(xp.angle(sig0))), (tsymbr, xp.polyval(coef2d_est2, tsymbr) - xp.polyval(coef2d_est2, tsymbr[0]) + xp.angle(sig0[0]))),
+            pltfig1(nsymbr, xp.angle(sig0 * xp.exp(-1j * xp.polyval(coeflistn[pidx], nsymbr - Config.tsign * pidx))),
+                    title=f"Fitted Phase Curve for Preamble Symbol {pidx}",
+                    mode='lines').show()
+            plt_delta = xp.angle(reader.get(nsymbr_start, nsymbr_start + 1)) - xp.polyval(coeflistn[pidx], nsymbr_start - Config.tsign * pidx)
+            pltfig(((nsymbr, xp.unwrap(xp.angle(sig0))), (nsymbr, xp.polyval(coeflistn[pidx], nsymbr - Config.tsign * pidx) + plt_delta)),
                     title=f"Fitted Phase Curve Comparison for Preamble Symbol {pidx}",
                     modes='lines').show()
-    return xp.array(coeflist)
+    return xp.array(coeflistn)
 

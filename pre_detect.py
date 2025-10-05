@@ -139,7 +139,7 @@ def detect_slow(cfg, xp, fstart, tstart, dwin, updown_generator, bwnew2, FFT_N):
     t0  = t0 % 1
 
     est_cfo_f = f0 * cfg.bw + fstart
-    est_to_s  = (t0 + dwin) * cfg.tsig + tstart 
+    est_to_s  = (t0 + dwin) * cfg.tsign + tstart 
 
     ret1 = float(to_scalar(xp.max(add_up[lo:hi])))
     ret2 = float(to_scalar(xp.max(add_down[lo:hi])))
