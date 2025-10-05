@@ -9,15 +9,15 @@ def fitcoef2(coeff: xp.array, coeftn: xp.array, reader: SlidingComplex64Reader):
     for pidx in range(0, Config.preamble_len):
         cfo_start = xp.polyval(coeff, pidx)
         bw_start = Config.bw * (1 + cfo_start / Config.sig_freq)
-        freq_rate = Config.bw / ((2 ** Config.sf) / Config.bw) * xp.pi * (1 + 2 * cfo_start / Config.sig_freq)
+        freq_rate = Config.bw / ((2 ** Config.sf) / Config.bw) * (1 + 2 * cfo_start / Config.sig_freq)
         # ax^2 + bx + c frequency: (2ax + b)/2pi frequency change rate: a/pi
         coeflistn[pidx, 0] = freq_rate / Config.fs / Config.fs * xp.pi
 
         tstartn = xp.polyval(coeftn, pidx) # real start time = tstartn + Config.tsign * pidx + reader.tstart
         tendn = xp.polyval(coeftn, pidx + 1) # real end time = tendn + Config.tsign * pidx + reader.tstart
         freq_start = - bw_start * 0.5 + cfo_start
-        # (2ax + b)/2pi = freq_start at x = tstartn, b = 2pi(freq_start - 2a tstartn)
-        coeflistn[pidx, 1] = 2 * xp.pi * freq_start / Config.fs - 2 * freq_rate * tstartn
+        # (2ax + b)/2pi = freq_start at x = tstartn, b = 2pi * freq_start - 2a tstartn
+        coeflistn[pidx, 1] = 2 * xp.pi * freq_start / Config.fs - 2 * coeflistn[pidx, 0] * tstartn
 
         # align 3rd parameter of coef2d to observed phase at tstartn
         nsymbr_start = ceil(tstartn + Config.nsamp / 8 + Config.tsign * pidx)
@@ -29,10 +29,9 @@ def fitcoef2(coeff: xp.array, coeftn: xp.array, reader: SlidingComplex64Reader):
         data0 = myfft(sig1, n=Config.fft_n, plan=Config.plan)
         freq1 = xp.fft.fftshift(xp.fft.fftfreq(Config.fft_n, d=1 / Config.fs))[xp.argmax(xp.abs(data0))]
         freq, valnew = optimize_1dfreq_fast(sig1, Config.fs, freq1, Config.fs / Config.fft_n * 5)
-        coeflistn[pidx, 1] = 2 * xp.pi * (freq_start + freq) / Config.fs - 2 * freq_rate * tstartn
+        coeflistn[pidx, 1] = 2 * xp.pi * (freq_start + freq) / Config.fs - 2 * coeflistn[pidx, 0] * tstartn
         sig2 = sig0.dot(xp.exp(-1j * xp.polyval(coeflistn[pidx], nsymbr - Config.tsign * pidx)))
         coeflistn[pidx, 2] += xp.angle(sig2)
-        print(f"Preamble Symbol {pidx}: C0={coeflistn[pidx,0]:.3e}, C1={coeflistn[pidx,1]:.3e}, C2={coeflistn[pidx,2]:.3e}")
 
         if pidx < 2:
             nsymbr_start = ceil(tstartn + Config.tsign * pidx)
