@@ -9,7 +9,9 @@ file_path = "data/test_1226"
 reader = SlidingComplex64Reader(file_path, 4240091)
 
 coeff = xp.array((-0.512392321665, -41023.388364708379), dtype=xp.float64)
-coeftn = xp.array((0.101716420, 10082.6333 - Config.tsign, 0.37), dtype=xp.float64) 
+coeftn = xp.array((0.101716420e-6, 10082.6333 - Config.tsign, 0.37), dtype=xp.float64) 
+print(xp.polyval(coeftn, 252) - xp.polyval(coeftn, 251))
+print(xp.polyval(coeftn, 50) - xp.polyval(coeftn, 49))
 
 coeflist = fitcoef2(coeff, coeftn, reader)
 
@@ -17,17 +19,17 @@ sec_xlist = []
 sec_tlist = []
 if True:
     for pidx in xp.arange(Config.preamble_len):
-        tstart2 = xp.polyval(coeftn, pidx)
+        tstart2 = xp.polyval(coeftn, pidx) + Config.tsign * pidx
+        tdiff = xp.polyval(coeftn, pidx + 1) + Config.tsign * (pidx + 1) - tstart2
         if pidx > 0:
-            selected = find_intersections(coeflist[pidx - 1], coeflist[pidx], tstart2, reader, 1e-5, pidx, draw=(pidx % 50 == 0 or pidx==225)) #!!! TODO remove range
+            selected = find_intersections(coeflist[pidx - 1], coeflist[pidx], tstart2, tdiff, reader, 10, pidx - 1, draw=(pidx == 0 or pidx % 50 == 0 or pidx==225)) #!!! TODO remove range
         else:
-            nsymbr_start = ceil(tstart2 * Config.fs - Config.nsamp / 8)
-            nsymbr_end = ceil(tstart2 * Config.fs)
+            nsymbr_start = ceil(xp.polyval(coeftn, pidx) - Config.nsamp / 8 + Config.tsign * pidx)
+            nsymbr_end = ceil(xp.polyval(coeftn, pidx) + Config.tsign * pidx)
             nsymbr = xp.arange(nsymbr_start, nsymbr_end)
-            tsymbr = nsymbr / Config.fs
-            sig0 = reader.get(nsymbr_start, nsymbr_end - nsymbr_start)
+            sig0 = reader.get(nsymbr_start, nsymbr_end)
             coefstart = xp.hstack(([0., 0.], xp.angle(xp.sum(sig0)))).astype(xp.float64)
-            selected = find_intersections(xp.zeros_like(coefstart), coeflist[pidx], tstart2, reader, 1e-5, pidx, draw=True) #!!! TODO remove range
+            selected = find_intersections(xp.zeros_like(coefstart), coeflist[pidx], tstart2, 0, reader, 10, pidx, draw=True) #!!! TODO remove range
         if selected != None:
             sec_xlist.append(pidx)
             sec_tlist.append(to_scalar(selected))
@@ -469,7 +471,7 @@ for pidx in range(Config.total_len):
             # print(f"Adjusting phase offset at {pidx=}: {xp.angle(res1)} {xp.angle(res2)} {xp.angle(sig1.dot(xp.exp(-1j * xp.polyval(coeffitlist[0, pidx], tsymbr1))) )}, {xp.angle(sig2.dot(xp.exp(-1j * xp.polyval(coeffitlist[1, pidx], tsymbr2)) ))}")
         # else:
                 # if pidx >= Config.sfdend + 1 and pidx < Config.sfdend + 20:
-        # selected = find_intersections(coeffitlist[0, pidx], coeffitlist[1, pidx - 1], xp.polyval(coef_t, pidx - pidx_delta), reader, 1e-5, pidx, draw=True)
+        # selected = find_intersections(coeffitlist[0, pidx], coeffitlist[1, pidx - 1], xp.polyval(coef_t, pidx - pidx_delta), reader, 10, pidx, draw=True)
     if pidx in range(Config.sfdend + 5, Config.sfdend + 10):
         print(f"Adjusting phase offset at {pidx=}: {xp.angle(res1)} {xp.angle(sig1[-1].dot(xp.exp(-1j * xp.polyval(coeffitlist[0, pidx], tsymbr1[-1]))) )} {wrap(xp.angle(sig1[-1]) - xp.polyval(coeffitlist[0, pidx], tsymbr1[-1]))}")
         pltfig1(tsymbr1, xp.angle(sig1 * xp.exp(-1j * xp.polyval(coeffitlist[0, pidx], tsymbr1))), title=f"residue {pidx=}").show()

@@ -33,7 +33,7 @@ def fitcoef2(coeff: xp.array, coeftn: xp.array, reader: SlidingComplex64Reader):
         sig2 = sig0.dot(xp.exp(-1j * xp.polyval(coeflistn[pidx], nsymbr - Config.tsign * pidx)))
         coeflistn[pidx, 2] += xp.angle(sig2)
 
-        if pidx < 2:
+        if False:#pidx < 2:
             nsymbr_start = ceil(tstartn + Config.tsign * pidx)
             nsymbr_end = ceil(tendn + Config.tsign * (pidx + 1))
             sig0 = reader.get(nsymbr_start, nsymbr_end)

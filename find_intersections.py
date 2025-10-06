@@ -1,10 +1,10 @@
-from utils import xp, to_device, to_host, to_scalar, wrap, pltfig1
+from utils import xp, to_device, to_host, to_scalar, wrap, pltfig1, pltfig
 from Config import Config
 from reader import SlidingComplex64Reader
 from math import ceil, floor
 import plotly.graph_objects as go
 
-def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, reader: SlidingComplex64Reader, epsilon: float, pidx: int, draw: bool):
+def find_intersections(coefa: xp.ndarray, coefb_in: xp.ndarray, tstart2: float, tdiff: float, reader: SlidingComplex64Reader, epsilon: float, pidx: int, draw: bool):
     """
     Finds all intersection points of two quadratic polynomials within a specified range.
 
@@ -17,8 +17,15 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
     Returns:
         xp.ndarray: A sorted array of the x-coordinates of the intersection points.
     """
+### tdiff: coefb shift right by tdiff
+    coefb = xp.copy(coefb_in)
+    coefb[1] -= 2 * coefb[0] * tdiff
+    coefb[2] -= xp.polyval(coefb, tstart2 + tdiff) - xp.polyval(coefb_in, tstart2)
+    print(f"{xp.polyval(coefb, tstart2 + tdiff)=}, {xp.polyval(coefb_in, tstart2)=} {-coefa[1]/2/coefa[0]=} {-coefb[1]/2/coefb[0]=} {tdiff=}")
+
     x_min = tstart2 - epsilon
     x_max = tstart2 + epsilon
+    print(f"{coefa=}, {coefb=}, {tstart2=}, {tdiff=}, {epsilon=} {x_min=}, {x_max=}")
 
     # Compute the difference polynomial coefa - coefb
     poly_diff = xp.polysub(coefa, coefb)
@@ -73,25 +80,26 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
                     roots.append(root2)
     intersection_points = xp.array(roots)
 
-    xv = to_device(xp.arange(ceil(x_min * Config.fs), ceil(x_max * Config.fs), dtype=int))
-    sig = reader.get(to_scalar(xv[0]), len(xv))
-    sig_ref1 = sig * xp.exp(-1j * xp.polyval(coefa, xv / Config.fs))
-    sig_ref2 = sig * xp.exp(-1j * xp.polyval(coefb, xv / Config.fs))
+    xv = to_device(xp.arange(ceil(x_min), ceil(x_max), dtype=int))
+    sig = reader.get(ceil(x_min), ceil(x_max))
+    sig_ref1 = sig * xp.exp(-1j * xp.polyval(coefa, xv - (pidx - 1) * Config.tsign))
+    sig_ref2 = sig * xp.exp(-1j * xp.polyval(coefb_in, xv - pidx * Config.tsign))
+    print(f"{xp.abs(xp.sum(sig_ref1))=}, {xp.abs(xp.sum(sig_ref2))=}")
     
 
     if len(intersection_points) != 0:
-        selected = max(intersection_points, key=lambda x: xp.abs(xp.sum(sig_ref1[:ceil(x * Config.fs - xv[0])])) + xp.abs(xp.sum(sig_ref2[ceil(x * Config.fs - xv[0]):])))
+        selected = max(intersection_points, key=lambda x: xp.abs(xp.sum(sig_ref1[:ceil(x - xv[0])])) + xp.abs(xp.sum(sig_ref2[ceil(x - xv[0]):])))
         selected2 = min(intersection_points, key=lambda x: abs(x - tstart2))
 
     if draw:
         x_vals = xp.linspace(x_min, x_max, 400)
-        y_vals_a = wrap(xp.polyval(coefa, x_vals))
-        y_vals_b = wrap(xp.polyval(coefb, x_vals))
+        y_vals_a = wrap(xp.polyval(coefa, x_vals  - (pidx-1) * Config.tsign))
+        y_vals_b = wrap(xp.polyval(coefb, x_vals  - (pidx-1) * Config.tsign))
         fig = pltfig1(x_vals, y_vals_a)
         pltfig1(x_vals, y_vals_b, fig=fig)
-        pltfig1(xv / Config.fs, xp.angle(sig), fig=fig, mode='markers', marker=dict(color='green', symbol='x', size=8))
-        fig.add_trace(go.Scatter(x=to_host(intersection_points), y=to_host(wrap(xp.polyval(coefa, intersection_points))), mode='markers', marker=dict(color='red', symbol='circle', size=10)))
-        fig.add_trace(go.Scatter(x=to_host(intersection_points), y=to_host(wrap(xp.polyval(coefb, intersection_points))), mode='markers', marker=dict(color='red', symbol='circle', size=10)))
+        pltfig1(xv, xp.angle(sig), fig=fig, mode='markers', marker=dict(color='green', symbol='x', size=8))
+        fig.add_trace(go.Scatter(x=to_host(intersection_points), y=to_host(wrap(xp.polyval(coefa, intersection_points  - (pidx-1) * Config.tsign))), mode='markers', marker=dict(color='red', symbol='circle', size=10)))
+        fig.add_trace(go.Scatter(x=to_host(intersection_points), y=to_host(wrap(xp.polyval(coefb, intersection_points  - (pidx-1) * Config.tsign))), mode='markers', marker=dict(color='red', symbol='circle', size=10)))
         if len(intersection_points) != 0:
             fig.add_trace(go.Scatter(x=[to_scalar(selected)], y=[to_scalar(wrap(xp.polyval(coefa, selected)))], mode='markers', marker=dict(color='blue', symbol='cross', size=10)))
         fig.add_vline(x=to_scalar(x_min), line_dash='dash')
@@ -99,6 +107,16 @@ def find_intersections(coefa: xp.ndarray, coefb: xp.ndarray, tstart2: float, rea
         fig.add_vline(x=to_scalar(tstart2), line_dash='dash')
         fig.update_layout(title_text=f'Intersection Points of Two Quadratic Polynomials {pidx=}')
         fig.show()
+        x_vals = xp.linspace(x_min - Config.tsign, x_max + Config.tsign, 400)
+        y_vals_a = wrap(xp.polyval(coefa, x_vals))
+        y_vals_b = wrap(xp.polyval(coefb, x_vals))
+        pltfig(((x_vals, xp.polyval(coefa, x_vals - (pidx-1) * Config.tsign) - xp.polyval(coefa, tstart2 - (pidx-1) * Config.tsign)), 
+                (x_vals, xp.polyval(coefb, x_vals - (pidx-1) * Config.tsign) - xp.polyval(coefb, tstart2 - (pidx-1) * Config.tsign)),
+                (x_vals, xp.polyval(coefb_in, x_vals - pidx * Config.tsign) - xp.polyval(coefb_in, tstart2 - pidx * Config.tsign)),
+                (xp.arange(ceil(x_min - Config.tsign), ceil(x_max + Config.tsign)), xp.unwrap(xp.angle(reader.get(ceil(x_min - Config.tsign), ceil(x_max + Config.tsign)))))
+                ),
+                title=f"Intersection Points of Two Quadratic Polynomials {pidx=} {x_vals[0] - ((pidx-1) * Config.tsign)} {x_vals[-1] - (pidx+1)*Config.tsign}", addvline=[tstart2, ],
+                modes='lines').show()
         
     if len(intersection_points) == 0:
         raise Exception("No intersection points found within the specified range.")
