@@ -10,8 +10,8 @@ reader = SlidingComplex64Reader(file_path, 4240091)
 
 coeff = xp.array((-0.512392321665, -41023.388364708379), dtype=xp.float64)
 coeftn = xp.array((0.101716420e-6, 10082.6333 - Config.tsign, 0.37), dtype=xp.float64) 
-print(xp.polyval(coeftn, 252) - xp.polyval(coeftn, 251))
-print(xp.polyval(coeftn, 50) - xp.polyval(coeftn, 49))
+print(xp.polyval(coeftn, 252))
+print(xp.polyval(coeftn, 50))
 
 coeflist = fitcoef2(coeff, coeftn, reader)
 
